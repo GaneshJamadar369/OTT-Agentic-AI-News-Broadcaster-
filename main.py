@@ -140,6 +140,8 @@ def run_industry_pipeline(url):
     with open("final_broadcast_plan.json", "w", encoding="utf-8") as f:
         json.dump(output_schema, f, ensure_ascii=False, indent=2)
     print("\nSaved: final_broadcast_plan.json")
+    
+    return output_schema # Return for UI
 
 
 def print_human_screenplay(state):

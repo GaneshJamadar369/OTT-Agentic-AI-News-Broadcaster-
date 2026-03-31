@@ -1,0 +1,18 @@
+﻿
+--- Testing Solution: Jina AI Reader ---
+Status: 451
+Content length: 0
+
+--- Testing Solution: curl_cffi ---
+Status: 200
+Content length: 8181
+
+--- Testing Solution: Playwright Stealth Library ---
+Error: 'module' object is not callable
+
+==============================
+FINAL RESULTS
+==============================
+Jina AI: 0 chars extracted
+curl_cffi: 8181 chars extracted
+Playwright Stealth: 0 chars extracted
