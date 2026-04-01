@@ -13,9 +13,14 @@ This repo covers **planning and structured output only** (no video render, TTS, 
 | Extract & ground | `journalist.py` + `scraper_utils.py` | Fetch HTML, extract text/images (trafilatura / newspaper3k, Playwright fallback), optional LLM cleanup, guardrails for thin or error-like pages |
 | Script | `editor.py` | Single continuous anchor narration (target ~160–320 words) |
 | Parallel packaging | `visualizer.py`, `tagger.py` | **Visualizer**: JSON segments with times, layout, `text`, image URL or AI prompt. **Tagger**: matching `headline`, `subheadline`, `top_tag` list |
-| QA | `reviewer.py` | Scores structure, hook, narration, visuals, headlines; sets `failure_type` for routing |
+| Deterministic sync | `evaluation/pipeline.py` (`validate_parallel`) | JSON/schema, segment count match, timecodes, duration window—before package LLM judges |
+| Rubric evaluation | `evaluation/` | Per-metric scores (code + Groq judges, temp 0, JSON); **`evaluate_journalist`** then **`evaluate_package`** (editor, visualizer, tagger, cross-package) |
 | Merge | `main.py` (`final_assembler`) | Writes tag fields into each segment dict |
-| Output | `main.py` | Console screenplay + `final_broadcast_plan.json` |
+| Output | `main.py` | Console screenplay + `final_broadcast_plan.json` + `evaluation_report.json` |
+
+Canonical metric spec: **`docs/STRICT_EVALUATION_SPEC.md`**. Policy: **`config/evaluation_policy.yaml`**. Rubric: **`config/evaluation_rubric.yaml`** (run **`python gen_rubric.py`** to regenerate). Summary: **`PROJECT_REPORT.md`**.
+
+**GitHub (placeholder):** add your public repo URL in `PROJECT_REPORT.md` when ready.
 
 ---
 
@@ -108,6 +113,9 @@ Both prompt for a URL and call `run_industry_pipeline`.
 Top level:
 
 - `article_url`, `source_title`, `video_duration_sec`, `segments`
+- `evaluation_results`, `evaluation_trace`, `rubric_version`, `policy_version`, `review_scores`
+
+**`evaluation_report.json`** holds a focused snapshot: trace, per-agent merged scores, and review summary.
 
 Each **segment** (after merge) typically includes:
 
@@ -135,8 +143,11 @@ Field names may differ slightly from an external PDF spec (e.g. `text` vs `ancho
 | `editor.py` | Narration script |
 | `visualizer.py` | Segment JSON from narration + images |
 | `tagger.py` | Per-segment headlines/tags JSON |
-| `reviewer.py` | QA JSON + retry hints |
+| `evaluation/` | Rubric load, deterministic checks, Groq judges, aggregate, pipeline steps |
+| `reviewer.py` | Deprecated (use `evaluation/`; do not wire in graph) |
 | `scraper_utils.py` | Tiered fetch/extract |
+| `gen_rubric.py` | Generates `config/evaluation_rubric.yaml` |
+| `PROJECT_REPORT.md` | Evaluation methodology and policy summary |
 | `app.py` | CLI wrapper around `run_industry_pipeline` |
 | `task.md` | Original product / assignment spec (reference) |
 

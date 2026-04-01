@@ -2,39 +2,52 @@ import os
 from groq import Groq
 from dotenv import load_dotenv
 from state import AgentState
+from groq_utils import groq_chat_create
 
-# Load dependencies
 load_dotenv()
 client = Groq(api_key=os.getenv("GROQ_API_KEY"))
 
+
 def editor_agent(state: AgentState):
-    """
-    The Editor Agent: Writes a broadcast script (60-120s) with clear story beats.
-    Target word count: 160-320 words.
-    """
-    print("\n--- EDITOR IS WRITING THE BROADCAST SCRIPT (via GROQ) ---")
-    
+    """Broadcast narration 160–320 words; consumes metric-level FEEDBACK on retries."""
+    print("\n--- EDITOR: writing narration (Groq) ---")
+
+    feedback = (state.get("last_feedback_by_agent") or {}).get("editor", "")
+    fb_block = ""
+    if feedback.strip():
+        fb_block = f"""
+FEEDBACK (fix these issues; preserve strong parts):
+{feedback}
+"""
+
     prompt = f"""
-    You are a Senior TV News Producer. Use these facts from the article: 
-    {state['article_text']}
-    
-    TASK: Write a 1-2 minute TV News Narration Script.
-    Constraints:
-    - Length: Exactly 160 to 320 words (approx 60-120s at speaking speed).
-    - Tone: Professional, urgent, and conversational (broadcast style).
-    - Structure:
-        1. THE HOOK: A punchy lead that spreads interest.
-        2. THE MEAT: 3-4 distinct 'beats' or paragraphs with factual depth.
-        3. THE CLOSE: A professional sign-off or closing thought.
-    - Avoid: Robotic phrasing or bulleted lists in the final script.
-    """
-    
+You are a Senior TV News Producer. Use only facts supported by the research package below.
+{fb_block}
+RESEARCH PACKAGE:
+{state['article_text']}
+
+TASK: Write one continuous TV news narration (no bullet points, no numbered lists).
+Constraints:
+- Length: 160 to 320 words (strict).
+- Structure: strong hook, 3-4 story beats in paragraphs, professional close.
+- Tone: broadcast, urgent but accurate; no jokes on serious topics.
+- Never say "this article", "this script", or "according to the report" meta-phrases.
+- Temperature: write for live anchor read-aloud.
+"""
+
+<<<<<<< Current (Your changes)
+    response = groq_chat_create(
+        client,
+=======
     response = client.chat.completions.create(
+>>>>>>> Incoming (Background Agent changes)
         model="llama-3.3-70b-versatile",
-        messages=[{"role": "user", "content": prompt}]
+        temperature=0.3,
+        messages=[{"role": "user", "content": prompt}],
     )
-    
+
     return {
-        "narration_script": response.choices[0].message.content,
-        "current_agent": "Editor"
+        "narration_script": response.choices[0].message.content or "",
+        "current_agent": "Editor",
+        "editor_runs": state.get("editor_runs", 0) + 1,
     }

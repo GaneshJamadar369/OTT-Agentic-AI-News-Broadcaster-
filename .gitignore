@@ -7,4 +7,5 @@ __pycache__/
 .pytest_cache/
 .mypy_cache/
 final_broadcast_plan.json
+evaluation_report.json
 trace.json
