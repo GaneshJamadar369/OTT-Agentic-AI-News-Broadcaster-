@@ -22,43 +22,71 @@ def route_after_journalist_output(state: AgentState):
 def route_after_journalist_eval(state: AgentState):
     res = (state.get("evaluation_results") or {}).get("journalist") or {}
     if res.get("pass"):
+        print("[route] evaluate_journalist -> continue (PASS)")
         return "continue"
     policy = load_policy()
     max_r = int(policy.get("agent_max_retries", {}).get("journalist", 2))
     runs = int(state.get("journalist_runs") or 0)
     if runs < 1 + max_r:
+        print(
+            f"[route] evaluate_journalist -> retry journalist "
+            f"(runs={runs}, max_retries={max_r}, blocking={res.get('blocking')})"
+        )
         return "retry"
+    print("[route] evaluate_journalist -> reject_journalist (budget exhausted)")
     return "abort"
 
 
 def route_after_parallel(state: AgentState):
     if state.get("parallel_validation_ok"):
+        print("[route] validate_parallel -> ok (deterministic sync PASS)")
         return "ok"
     policy = load_policy()
     max_r = int(policy.get("agent_max_retries", {}).get("visualizer", 2))
     pr = int(state.get("packaging_runs") or 0)
+    errs = state.get("parallel_validation_errors") or []
+    print(f"[route] validate_parallel FAIL: {errs}")
     if pr < 1 + max_r:
+        print(
+            f"[route] validate_parallel -> retry visual_packaging_fork "
+            f"(packaging_runs={pr}, max={max_r})"
+        )
         return "retry"
+    print("[route] validate_parallel -> reject_parallel (sync budget exhausted)")
     return "abort_sync"
 
 
 def route_after_package(state: AgentState):
     if state.get("package_evaluation_ok"):
+        print("[route] evaluate_package -> finalize (PASS)")
         return "finalize"
     policy = load_policy()
     max_g = int(policy.get("max_graph_iterations", 3))
     it = int(state.get("iterations") or 0)
-    if it >= max_g:
-        return "reject_package"
     hint = state.get("package_route_hint") or "retry_visuals"
+    rs = state.get("review_scores") or {}
+    print(
+        f"[route] evaluate_package FAIL: status={rs.get('status')} "
+        f"iterations={it}/{max_g} hint={hint} "
+        f"by_agent={rs.get('by_agent')}"
+    )
+    if it >= max_g:
+        print("[route] evaluate_package -> reject_package (max graph iterations)")
+        return "reject_package"
     max_e = int(policy.get("agent_max_retries", {}).get("editor", 2))
     max_v = int(policy.get("agent_max_retries", {}).get("visualizer", 2))
     er = int(state.get("editor_runs") or 0)
     pr = int(state.get("packaging_runs") or 0)
     if hint == "retry_editor" and er < 1 + max_e:
+        print(f"[route] evaluate_package -> retry_editor (editor_runs={er}, max={max_e})")
         return "retry_editor"
     if hint == "retry_visuals" and pr < 1 + max_v:
+        print(
+            f"[route] evaluate_package -> retry_visuals (fork) "
+            f"(packaging_runs={pr}, max={max_v})"
+        )
         return "retry_visuals"
+    print("[route] evaluate_package -> reject_package (retry budgets exhausted)")
     return "reject_package"
 
 
