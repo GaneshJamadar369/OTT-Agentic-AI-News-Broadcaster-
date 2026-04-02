@@ -1,6 +1,6 @@
 # LOQO: Dynamic broadcast screenplay generator
 
-LOQO turns a **public news article URL** into a **60–120 second** TV-style package: anchor narration, timed segments, on-screen headlines, layout hints, and either **source image URLs** or **AI image prompts**. Orchestration uses **LangGraph**; language calls use **Groq** (`llama-3.3-70b-versatile`). Article text and images are pulled with a **tiered scraper** before any script is written.
+LOQO turns a **public news article URL** into a **60–120 second** TV-style package: anchor narration, timed segments, on-screen headlines, layout hints, and either **source image URLs** or **AI image prompts**. Orchestration uses **LangGraph**; language calls use a provider-agnostic utility (**`llm_utils.py`**) with layered fallbacks: **Groq** (`llama-3.3-70b-versatile`) $\rightarrow$ **Gemini** $\rightarrow$ **Sarvam AI**. Article text and images are pulled with a **tiered scraper** before any script is written. Built-in **Best-of-N selection** ensures the highest-scoring iteration is used even under heavy rate limits.
 
 This repo covers **planning and structured output only** (no video render, TTS, or image generation).
 
@@ -41,17 +41,23 @@ flowchart TD
     Route -->|finalize| Assembler[final_assembler]
     Route -->|retry_editor| Editor
     Route -->|retry_visuals| Fork
+    Route -->|repair_tagger| RepairTagger[repair_tagger]
+    RepairTagger --> Reviewer
+    Route -->|exhausted| BestOfN[rollback_best_package]
+    BestOfN --> Assembler
     Assembler --> EndOk([END])
 ```
 
 **Conditional routing (`main.py`):**
 
-- After **journalist**: if `article_text == "ERROR: INVALID_CONTENT"`, go to **END** (no script).
-- After **reviewer**:
+- **Leader-Follower Authority**: Visualizer is the canonical owner of segment counts. The Tagger is a follower; structural mismatches trigger a surgical `repair_tagger` node rather than a full visual re-plan.
+- **Surgical Repairs**: Feedback packets are machine-readable JSON, allowing tools to fix specific segment gaps or tag-count errors without regenerating the entire broadcast.
+- **Best-of-N Recovery**: The pipeline tracks the highest-scoring state across all iterations (`best_package_state`). If retry budgets are exhausted, it rolls back to the "best attempt" rather than failing with the last (likely worse) attempt.
+- **Auto-Routing**:
   - **PASS** → `final_assembler` → **END**
-  - **FAIL** and `iterations >= 3` → finalize anyway (log line), no infinite loop
-  - **FAIL** and `failure_type` in `visualizer` / `tagger` → **retry_visuals** → **`visual_packaging_fork`** (both **visualizer** and **tagger** run again; fixes the earlier issue where only the visualizer re-ran)
-  - Otherwise → **retry_editor**
+  - **FAIL & Structural Error** → `repair_tagger` (targeted fix)
+  - **FAIL & Visual Error** → `retry_visuals` (re-runs Visualizer + Tagger)
+  - **FAIL & Iterations Exhausted** → `rollback_best_package` → Finalize
 
 **State:** `state.py` defines `AgentState` (including `iterations: Annotated[int, operator.add]` so retries accumulate correctly).
 
@@ -82,10 +88,11 @@ playwright install chromium
 **Environment (`.env`):**
 
 ```env
-GROQ_API_KEY=...
+GROQ_API_KEY=key1,key2... (Multi-org rotation)
+GEMINI_API_KEY=...
+SARVAM_API_KEY=... (India-AI Fallback)
+SARVAM_MODEL=sarvam-105b (Optional override)
 LANGFUSE_SECRET_KEY=...
-LANGFUSE_PUBLIC_KEY=...
-LANGFUSE_HOST=https://cloud.langfuse.com
 ```
 
 Copy `.env` locally; it is listed in `.gitignore`.
@@ -137,8 +144,9 @@ Field names may differ slightly from an external PDF spec (e.g. `text` vs `ancho
 
 | File | Purpose |
 |------|---------|
-| `main.py` | Graph definition, routers, pipeline entry, JSON + CLI screenplay |
-| `state.py` | `AgentState` |
+| `main.py` | Graph definition, Best-of-N rollback, surgical repair nodes |
+| `llm_utils.py` | Multi-provider dispatcher (Groq -> Gemini -> Sarvam), JSON repair, quota steering |
+| `state.py` | `AgentState` including `best_package_score` and state tracking |
 | `journalist.py` | Scrape + LLM structuring + guardrails |
 | `editor.py` | Narration script |
 | `visualizer.py` | Segment JSON from narration + images |

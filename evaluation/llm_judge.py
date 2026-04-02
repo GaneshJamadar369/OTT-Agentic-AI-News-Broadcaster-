@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 
 from groq import Groq
 from dotenv import load_dotenv
-from groq_utils import groq_chat_create
+from llm_utils import llm_chat_create
 from evaluation.load_rubric import get_metrics_for_agent, metric_ids_for_llm
 
 load_dotenv()
@@ -64,13 +64,13 @@ def run_llm_metrics(
     agent: str,
     rubric: Dict[str, Any],
     context: str,
-    model: str = "llama-3.3-70b-versatile",
+    model: str = "llama-3.1-8b-instant",
 ) -> Dict[str, Dict[str, Any]]:
     ids = metric_ids_for_llm(rubric, agent)
     if not ids:
         return {}
     prompt = _judge_prompt(agent, ids, rubric, context)
-    resp = groq_chat_create(
+    resp = llm_chat_create(
         _client_groq(),
         model=model,
         temperature=0,

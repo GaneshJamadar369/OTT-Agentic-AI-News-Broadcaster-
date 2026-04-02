@@ -11,20 +11,20 @@ agent_max_retries:
   tagger: 2
 
 # Weighted averages (1–5 scale). Agent WA must clear bar after merging code + LLM metrics (many weights).
-overall_pass_threshold_per_agent: 4.3
-overall_pass_threshold_cross_package: 4.3
+overall_pass_threshold_per_agent: 4.4
+overall_pass_threshold_cross_package: 4.4
 
 # Any critical metric below this fails that agent bundle
-critical_score_floor: 4.0
+critical_score_floor: 4.3
 
 # Non-critical metrics must also clear a professional floor
-min_score_per_metric: 3.0
+min_score_per_metric: 3.4
 
 # Hard minimum score per metric_id for a given agent
 metric_minimum_scores:
   journalist:
     source_faithfulness: 4.0
-    key_fact_coverage: 4.0
+    key_fact_coverage: 4.3
     lead_clarity: 4.0
     balance_neutrality: 3.0
     numerical_fidelity: 4.0
@@ -33,13 +33,13 @@ metric_minimum_scores:
     hook_strength: 4.5
     story_structure: 4.5
     factual_consistency_with_journalist: 4.5
-    avoid_sensationalism: 4.0
-    transition_smoothness: 4.0
+    avoid_sensationalism: 4.3
+    transition_smoothness: 4.5
   visualizer:
     beat_alignment: 4.5
     visual_story_match: 4.5
     use_of_source_images: 4.0
-    emotional_tone_alignment: 4.0
+    emotional_tone_alignment: 4.3
     chyron_readability: 4.0
     layout_variety_purpose: 4.0
     shot_diversity: 4.0

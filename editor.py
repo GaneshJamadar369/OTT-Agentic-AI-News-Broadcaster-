@@ -2,7 +2,7 @@ import os
 from groq import Groq
 from dotenv import load_dotenv
 from state import AgentState
-from groq_utils import groq_chat_create
+from llm_utils import llm_chat_create
 
 load_dotenv()
 _groq_keys = os.getenv("GROQ_API_KEY", "").split(",")
@@ -36,7 +36,7 @@ Constraints:
 - Temperature: write for live anchor read-aloud.
 """
 
-    response = groq_chat_create(
+    response = llm_chat_create(
         client,
         model="llama-3.3-70b-versatile",
         temperature=0.3,

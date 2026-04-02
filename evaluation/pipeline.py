@@ -61,11 +61,26 @@ def evaluate_journalist_step(state: Dict[str, Any]) -> Dict[str, Any]:
     trace = append_trace(state.get("evaluation_trace"), "evaluate_journalist", {"weighted_averages": {agent: wa}, "pass": ok})
     er = dict(state.get("evaluation_results") or {})
     er["journalist"] = payload
+    
+    # Best-of-N Tracking
+    best_scr = state.get("best_journalist_score") or 0.0
+    best_st = state.get("best_journalist_state") or {}
+    if wa > best_scr:
+        best_scr = wa
+        best_st = {
+            "article_title": state.get("article_title"),
+            "article_text": state.get("article_text"),
+            "raw_article_text": state.get("raw_article_text"),
+            "source_images": state.get("source_images"),
+        }
+        
     out: Dict[str, Any] = {
         "evaluation_results": er,
         "evaluation_trace": trace,
         "rubric_version": rv,
         "policy_version": pv,
+        "best_journalist_score": best_scr,
+        "best_journalist_state": best_st,
         "review_scores": {
             "status": "PASS" if ok else "FAIL",
             "overall_average": wa,
@@ -186,6 +201,20 @@ def evaluate_package_step(state: Dict[str, Any]) -> Dict[str, Any]:
     er = dict(state.get("evaluation_results") or {})
     er["package"] = results
     
+    # Best-of-N Tracking
+    best_scr = state.get("best_package_score") or 0.0
+    best_st = state.get("best_package_state") or {}
+    if overall > best_scr:
+        best_scr = overall
+        best_st = {
+            "narration_script": state.get("narration_script"),
+            "segments": state.get("segments"),
+            "segment_tags": state.get("segment_tags"),
+            "video_duration_sec": state.get("video_duration_sec"),
+            "video_category": state.get("video_category"),
+            "seo_tags": state.get("seo_tags"),
+        }
+        
     out: Dict[str, Any] = {
         "evaluation_results": er,
         "evaluation_trace": trace,
@@ -193,6 +222,8 @@ def evaluate_package_step(state: Dict[str, Any]) -> Dict[str, Any]:
         "package_route_hint": route,
         "rubric_version": rv,
         "policy_version": pv,
+        "best_package_score": best_scr,
+        "best_package_state": best_st,
         "review_scores": {
             "status": "PASS" if package_ok else "FAIL",
             "overall_average": overall,

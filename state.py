@@ -43,3 +43,9 @@ class AgentState(TypedDict, total=False):
     seo_tags: List[str]
 
     rejection_reason: str
+    
+    best_package_score: float
+    best_package_state: Dict[str, Any]
+    
+    best_journalist_score: float
+    best_journalist_state: Dict[str, Any]

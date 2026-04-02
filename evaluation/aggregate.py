@@ -197,8 +197,19 @@ def build_surgical_feedback_for_agent(
             "threshold": f["threshold"],
             "problem": f["evidence"],
             "fix": f["fix"],
-            "preserve": ["segment_count", "timecode_structure", "factual_core"]
         }
+        # Add structured context for structural mismatch
+        if agent_name == "tagger" and "count" in f["id"].lower():
+             packet["retry_context"] = {
+                 "error_type": "segment_count_mismatch",
+                 "instruction": "Return exactly the same number of tags as segments provided.",
+             }
+        elif agent_name == "visualizer" and "count" in f["id"].lower():
+            packet["retry_context"] = {
+                "error_type": "segment_count_failure",
+                "instruction": "Fix segment count to exactly 4.",
+            }
+            
         lines.append(json.dumps(packet, indent=2))
 
     return "\n".join(lines)

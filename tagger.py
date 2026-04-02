@@ -3,7 +3,7 @@ import json
 from groq import Groq
 from dotenv import load_dotenv
 from state import AgentState
-from groq_utils import groq_chat_create
+from llm_utils import llm_chat_create
 
 load_dotenv()
 _groq_keys = os.getenv("GROQ_API_KEY", "").split(",")
@@ -31,9 +31,10 @@ def tagger_agent(state: AgentState):
     NARRATION SCRIPT:
     {state['narration_script']}
 
-    STRICT SEGMENT TEMPLATE:
+    STRICT SEGMENT TEMPLATE (CANONICAL):
     Below are the segments defined by the visual director. 
-    You MUST provide exactly one set of tags for each segment ID listed below, in order.
+    You MUST provide exactly one set of tags for each segment ID listed below, in exactly the same order.
+    Do NOT infer story beats independently; only generate overlays for the existing segments provided.
     
     {segments_summary}
 
@@ -51,9 +52,9 @@ def tagger_agent(state: AgentState):
     }}
     """
 
-    response = groq_chat_create(
+    response = llm_chat_create(
         client,
-        model="llama-3.3-70b-versatile",
+        model="llama-3.1-8b-instant",
         temperature=0.0,
         messages=[{"role": "user", "content": prompt}],
         response_format={"type": "json_object"},

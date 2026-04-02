@@ -3,7 +3,7 @@ import json
 from groq import Groq
 from dotenv import load_dotenv
 from state import AgentState
-from groq_utils import groq_chat_create
+from llm_utils import llm_chat_create
 
 load_dotenv()
 _groq_keys = os.getenv("GROQ_API_KEY", "").split(",")
@@ -29,9 +29,9 @@ def metadata_agent(state: AgentState):
     }}
     """
 
-    response = groq_chat_create(
+    response = llm_chat_create(
         client,
-        model="llama-3.3-70b-versatile",
+        model="llama-3.1-8b-instant",
         temperature=0.0,
         messages=[{"role": "user", "content": prompt}],
         response_format={"type": "json_object"},

@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 
 from state import AgentState
 from scraper_utils import scrape_article
-from groq_utils import groq_chat_create
+from llm_utils import llm_chat_create
 
 
 load_dotenv()
@@ -130,7 +130,7 @@ Rules:
 - If the source text is noisy, still extract only grounded facts and omit uncertain material.
 """
 
-    response = groq_chat_create(
+    response = llm_chat_create(
         client,
         model="llama-3.3-70b-versatile",
         temperature=0.0,

@@ -3,7 +3,7 @@ import json
 from groq import Groq
 from dotenv import load_dotenv
 from state import AgentState
-from groq_utils import groq_chat_create
+from llm_utils import llm_chat_create
 
 load_dotenv()
 _groq_keys = os.getenv("GROQ_API_KEY", "").split(",")
@@ -47,6 +47,8 @@ Only use an AI prompt when none of these images fit that segment.
 SEGMENT DESIGN RULES (VERY IMPORTANT):
 
 1) EXACTLY 4 SEGMENTS, IN ORDER
+   - Do NOT change segment count on retry unless feedback explicitly mandates a different number (e.g., 'Use 5 segments').
+   - If feedback asks for 4 segments, keep exactly 4.
    - Segment 1: OPENING / HOOK (introduce story, location, main actors)
    - Segment 2: CONTEXT & DETAILS (what happened, how, key facts)
    - Segment 3: IMPACT & DEVELOPMENTS (responses, casualties, international angle, etc.)
@@ -82,11 +84,9 @@ SEGMENT DESIGN RULES (VERY IMPORTANT):
        * ai_support_visual_prompt: "<concrete visual description>"
    - NEVER leave both null, NEVER fill both at the same time.
    - If a source image clearly matches the narration for that segment, USE IT.
-     Example: if the narration mentions "White House address", prefer a source image
-     showing the speaker / White House.
+   - If the source image pool has only one relevant image, reuse it only where justified; do not force it into unrelated beats.
    - Only use ai_support_visual_prompt when no source image fits that beat.
-   - AI prompts must be concrete, safe and visual only. Do NOT include meta text
-     like "generate an image" or "a picture of". Just describe the scene.
+   - AI prompts must be concrete, safe and visual only. Do NOT include meta text.
 
 5) SEGMENT TEXT QUALITY
    - text should be 1–3 short sentences copied from the narration that fit the beat.
@@ -140,7 +140,7 @@ JSON SCHEMA (EXAMPLE SHAPE ONLY, NOT VALUES):
 }}
 """
 
-    response = groq_chat_create(
+    response = llm_chat_create(
         client,
         model="llama-3.3-70b-versatile",
         temperature=0.0,

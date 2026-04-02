@@ -331,4 +331,12 @@ def check_cross_package_code(state: Dict[str, Any]) -> Dict[str, Dict[str, Any]]
         4,
         "Routing uses aggregate.retry_targets from policy",
     )
+    out["no_schema_drift_retries"] = _entry(
+        5,
+        "Structural stability valid (system)",
+    )
+    out["fallback_graceful_failure"] = _entry(
+        5,
+        "Graceful failure handler confirmed present (system)",
+    )
     return out

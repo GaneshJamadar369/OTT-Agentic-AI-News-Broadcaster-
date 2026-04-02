@@ -10,3 +10,4 @@ playwright-stealth
 python-dotenv
 pyyaml
 google-generativeai
+requests

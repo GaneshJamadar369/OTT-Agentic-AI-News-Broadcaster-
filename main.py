@@ -34,8 +34,8 @@ def route_after_journalist_eval(state: AgentState):
             f"(runs={runs}, max_retries={max_r}, blocking={res.get('blocking')})"
         )
         return "retry"
-    print("[route] evaluate_journalist -> reject_journalist (budget exhausted)")
-    return "abort"
+    print("[route] evaluate_journalist -> recover_best (budget exhausted)")
+    return "recover"
 
 
 def route_after_parallel(state: AgentState):
@@ -47,12 +47,16 @@ def route_after_parallel(state: AgentState):
     pr = int(state.get("packaging_runs") or 0)
     errs = state.get("parallel_validation_errors") or []
     print(f"[route] validate_parallel FAIL: {errs}")
+    
     if pr < 1 + max_r:
-        print(
-            f"[route] validate_parallel -> retry visual_packaging_fork "
-            f"(packaging_runs={pr}, max={max_r})"
-        )
-        return "retry"
+        # Check if the only failure is per-segment tag alignment
+        only_tag_count = all("tag count" in e.lower() or "no tags" in e.lower() for e in errs)
+        if only_tag_count:
+            print(f"[route] validate_parallel -> retry_tagger_only (packaging_runs={pr}, max={max_r})")
+            return "retry_tagger"
+        print(f"[route] validate_parallel -> retry_visualizer (packaging_runs={pr}, max={max_r})")
+        return "retry_visualizer"
+    
     print("[route] validate_parallel -> reject_parallel (sync budget exhausted)")
     return "abort_sync"
 
@@ -72,8 +76,8 @@ def route_after_package(state: AgentState):
         f"by_agent={rs.get('by_agent')}"
     )
     if it >= max_g:
-        print("[route] evaluate_package -> reject_package (max graph iterations)")
-        return "reject_package"
+        print("[route] evaluate_package -> recover_best (max graph iterations)")
+        return "recover"
     max_e = int(policy.get("agent_max_retries", {}).get("editor", 2))
     max_v = int(policy.get("agent_max_retries", {}).get("visualizer", 2))
     er = int(state.get("editor_runs") or 0)
@@ -90,8 +94,8 @@ def route_after_package(state: AgentState):
             f"(packaging_runs={pr}, max={max_v})"
         )
         return "retry_visuals"
-    print("[route] evaluate_package -> reject_package (retry budgets exhausted or invalid hint)")
-    return "reject_package"
+    print("[route] evaluate_package -> recover_best (retry budgets exhausted or invalid hint)")
+    return "recover"
 
 
 def visual_packaging_fork(state: AgentState):
@@ -112,6 +116,18 @@ def evaluate_package_node(state: AgentState):
 
 def parallel_fork(state: AgentState):
     return {}
+
+def rollback_best_journalist_node(state: AgentState):
+    print("[recovery] Rolling back to best journalist iteration (Best-of-N)")
+    return state.get("best_journalist_state") or {}
+
+def rollback_best_package_node(state: AgentState):
+    print("[recovery] Rolling back to best package iteration (Best-of-N)")
+    return state.get("best_package_state") or {}
+
+def repair_tagger_node(state: AgentState):
+    print("[repair] Retrying tagger for current segments (surgical count fix)")
+    return tagger_agent(state)
 
 def final_assembler(state: AgentState):
     segments = state.get("segments") or []
@@ -171,6 +187,9 @@ workflow.add_node("tagger", tagger_agent)
 workflow.add_node("validate_parallel", validate_parallel_node)
 workflow.add_node("evaluate_package", evaluate_package_node)
 workflow.add_node("final_assembler", final_assembler)
+workflow.add_node("rollback_journalist", rollback_best_journalist_node)
+workflow.add_node("rollback_package", rollback_best_package_node)
+workflow.add_node("repair_tagger", repair_tagger_node)
 workflow.add_node("reject_journalist", reject_after_journalist)
 workflow.add_node("reject_parallel", reject_after_parallel)
 workflow.add_node("reject_package", reject_after_package)
@@ -186,8 +205,10 @@ workflow.add_conditional_edges(
 workflow.add_conditional_edges(
     "evaluate_journalist",
     route_after_journalist_eval,
-    {"continue": "parallel_fork", "retry": "journalist", "abort": "reject_journalist"},
+    {"continue": "parallel_fork", "retry": "journalist", "recover": "rollback_journalist", "abort": "reject_journalist"},
 )
+
+workflow.add_edge("rollback_journalist", "parallel_fork")
 
 workflow.add_edge("parallel_fork", "editor")
 workflow.add_edge("parallel_fork", "metadata_agent")
@@ -202,8 +223,15 @@ workflow.add_edge("tagger", "validate_parallel")
 workflow.add_conditional_edges(
     "validate_parallel",
     route_after_parallel,
-    {"ok": "evaluate_package", "retry": "visual_packaging_fork", "abort_sync": "reject_parallel"},
+    {
+        "ok": "evaluate_package",
+        "retry_tagger": "repair_tagger",
+        "retry_visualizer": "visual_packaging_fork",
+        "abort_sync": "reject_parallel"
+    },
 )
+
+workflow.add_edge("repair_tagger", "validate_parallel")
 
 workflow.add_conditional_edges(
     "evaluate_package",
@@ -212,9 +240,12 @@ workflow.add_conditional_edges(
         "finalize": "final_assembler",
         "retry_editor": "editor",
         "retry_visuals": "visual_packaging_fork",
+        "recover": "rollback_package",
         "reject_package": "reject_package",
     },
 )
+
+workflow.add_edge("rollback_package", "final_assembler")
 
 workflow.add_edge("final_assembler", END)
 
