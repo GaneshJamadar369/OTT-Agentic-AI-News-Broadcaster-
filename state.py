@@ -39,4 +39,7 @@ class AgentState(TypedDict, total=False):
     package_evaluation_ok: bool
     package_route_hint: str
 
+    video_category: str
+    seo_tags: List[str]
+
     rejection_reason: str

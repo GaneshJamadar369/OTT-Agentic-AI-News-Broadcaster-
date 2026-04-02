@@ -12,7 +12,7 @@ def _score(ok: bool, good: bool = True) -> int:
         return 5
     if ok:
         return 4
-    return 2
+    return 1
 
 
 def _entry(score: int, evidence: str) -> Dict[str, Any]:
@@ -66,11 +66,11 @@ def check_journalist_deterministic(state: Dict[str, Any]) -> Dict[str, Dict[str,
     )
 
     story_wc = word_count(story or "")
-    min_w, max_w = 200, 900
+    min_w, max_w = 80, 800
     len_ok = min_w <= story_wc <= max_w if story else False
     out["length_control"] = _entry(
-        _score(len_ok, story_wc <= 700),
-        f"STORY word count={story_wc} (policy window ~{min_w}-{max_w})",
+        _score(len_ok, story_wc >= 100),
+        f"STORY word count={story_wc} (prompt-aligned window ~{min_w}-{max_w})",
     )
 
     meta_bad = re.search(

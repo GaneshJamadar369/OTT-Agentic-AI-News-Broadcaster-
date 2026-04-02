@@ -6,47 +6,55 @@ from state import AgentState
 from groq_utils import groq_chat_create
 
 load_dotenv()
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+_groq_keys = os.getenv("GROQ_API_KEY", "").split(",")
+client = Groq(api_key=_groq_keys[0].strip() if _groq_keys else None)
 
 
 def tagger_agent(state: AgentState):
-    """Per-segment headlines, subheads, top tags."""
+    """Per-segment headlines, subheads, top tags, strictly aligned with visualizer segments."""
     print("\n--- TAGGER: headlines and tags (Groq) ---")
+
+    segments = state.get("segments") or []
+    segments_summary = "\n".join([
+        f"Segment {s['segment_id']} ({s['start_time']}-{s['end_time']}): {s['text'][:100]}..."
+        for s in segments
+    ])
 
     feedback = (state.get("last_feedback_by_agent") or {}).get("tagger", "")
     fb_block = ""
     if feedback.strip():
-        fb_block = f"""
-FEEDBACK (improve weak metrics; keep valid lines):
-{feedback}
-"""
+        fb_block = f"\nFEEDBACK (improve weak metrics):\n{feedback}\n"
 
     prompt = f"""
-You are a TV chyron editor.
-{fb_block}
-NARRATION SCRIPT:
-{state['narration_script']}
+    You are a TV chyron editor.
+    {fb_block}
+    NARRATION SCRIPT:
+    {state['narration_script']}
 
-Build segment_tags with the SAME number of segments as the story beats you infer (3-5).
-headline max 30 characters; subheadline max 50 characters.
-top_tag must be one of: BREAKING, LIVE, DEVELOPING, UPDATE, LATEST, EXCLUSIVE, ANALYSIS.
+    STRICT SEGMENT TEMPLATE:
+    Below are the segments defined by the visual director. 
+    You MUST provide exactly one set of tags for each segment ID listed below, in order.
+    
+    {segments_summary}
 
-JSON only:
-{{
-  "segment_tags": [
-    {{"headline": "...", "subheadline": "...", "top_tag": "UPDATE"}}
-  ]
-}}
-"""
+    Rules:
+    - headline max 25 characters.
+    - subheadline max 45 characters.
+    - top_tag must be one of: BREAKING, LIVE, DEVELOPING, UPDATE, LATEST, EXCLUSIVE, ANALYSIS.
+    - Respond with a JSON array 'segment_tags' containing exactly {len(segments)} objects.
 
-<<<<<<< Current (Your changes)
+    JSON only:
+    {{
+      "segment_tags": [
+        {{"segment_id": 1, "headline": "...", "subheadline": "...", "top_tag": "UPDATE"}}
+      ]
+    }}
+    """
+
     response = groq_chat_create(
         client,
-=======
-    response = client.chat.completions.create(
->>>>>>> Incoming (Background Agent changes)
         model="llama-3.3-70b-versatile",
-        temperature=0.2,
+        temperature=0.0,
         messages=[{"role": "user", "content": prompt}],
         response_format={"type": "json_object"},
     )

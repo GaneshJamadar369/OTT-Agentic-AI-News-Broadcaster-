@@ -1,0 +1,29 @@
+[
+  {
+    "url": "https://www.ndtv.com/world-news/iran-war-news-if-you-kill-our-leaders-well-attack-us-firms-like-google-meta-iran-11292804",
+    "local_len": 2154,
+    "jina_len": 551,
+    "tavily_len": 0,
+    "local_sample": "- Iran's Revolutionary Guards will target 18 major US tech firms from April 1\n- Targeted companies include Apple, Google, Meta, IBM, Tesla, and Boeing\n- The Guards accuse these firms of complicity in assassinations of Iranian officials\nIran's Revolutionary Guards said that they would target 18 leading US technology firms such as Apple, Google, Meta, IBM, Tesla and Boeing starting April 1. In a statement on Tuesday, the Guards alleged that the companies were complicit in the \u201ctargeted assassinati...",
+    "jina_sample": "{\"data\":null,\"code\":451,\"name\":\"SecurityCompromiseError\",\"status\":45102,\"message\":\"Anonymous access to domain www.ndtv.com blocked until Tue Mar 31 2026 18:36:24 GMT+0000 (Coordinated Universal Time) due to previous abuse found on https://www.ndtv.com/: DDoS attack suspected: Too many domains\",\"readableMessage\":\"SecurityCompromiseError: Anonymous access to domain www.ndtv.com blocked until Tue Mar 31 2026 18:36:24 GMT+0000 (Coordinated Universal Time) due to previous abuse found on https://www.n...",
+    "tavily_sample": "..."
+  },
+  {
+    "url": "https://www.indiatoday.in/world/story/shelly-kittleson-award-winning-journalist-who-covered-isis-afghanistan-kidnapped-in-baghdad-2889814-2026-03-31",
+    "local_len": 2391,
+    "jina_len": 25057,
+    "tavily_len": 0,
+    "local_sample": "US journalist Shelly Kittleson, who extensively covered ISIS, kidnapped in Iraq\nIraq's interior ministry confirmed that a \"foreign journalist was kidnapped by unknown individuals\" and said security forces have launched operations to track down those responsible.\nAmerican journalist Shelly Kittleson was abducted by unidentified individuals in Baghdad on Tuesday evening, according to local media. She was reportedly taken \"near the Baghdad hotel on al-Saadoun Street\" by unidentified men. While one ...",
+    "jina_sample": "Title: US journalist Shelly Kittleson, who extensively covered ISIS, kidnapped in Iraq\n\nURL Source: https://www.indiatoday.in/world/story/shelly-kittleson-award-winning-journalist-who-covered-isis-afghanistan-kidnapped-in-baghdad-2889814-2026-03-31\n\nPublished Time: 2026-03-31T22:59:07+05:30\n\nMarkdown Content:\n# Who is Shelly Kittleson, US journalist kidnapped in Iraq? - India Today\n\n*   [India Today](https://www.indiatoday.in/ \"India Today\")\n*   [Aaj Tak](https://www.aajtak.in/ \"Aaj Tak\")\n*   [I...",
+    "tavily_sample": "..."
+  },
+  {
+    "url": "https://www.hindustantimes.com/india-news/political-vultures-vs-pm-run-by-trump-modi-rahul-exchange-fire-over-west-asia-war-impact-on-india-101774968354620.html",
+    "local_len": 2957,
+    "jina_len": 889,
+    "tavily_len": 0,
+    "local_sample": "\u2018Political vultures\u2019 vs \u2018PM run by Trump\u2019: Modi, Rahul exchange fire over West Asia war impact on India\n\u201cYou know better than me what is happening\u201d Rahul Gandhi told gathering in Kerala, a state that sends a large number of workers to the Gulf region.\nThe West Asia conflict figured at the centre of political speeches of Prime Minister Narendra Modi and Opposition leader Rahul Gandhi on Tuesday as both blamed the other for the domino effects on India.\nSpeaking in Vav-Tharad, Gujarat, PM Modi said...",
+    "jina_sample": "{\"data\":null,\"code\":451,\"name\":\"SecurityCompromiseError\",\"status\":45102,\"message\":\"Anonymous access to domain www.hindustantimes.com blocked until Tue Mar 31 2026 19:22:58 GMT+0000 (Coordinated Universal Time) due to previous abuse found on https://www.hindustantimes.com/world-news/us-iran-war-news-live-updates-strait-of-hormuz-israel-trump-netanyahu-middle-east-oil-prices-uae-dubai-drone-missile-101774744583902.html: DDoS attack suspected: Too many requests\",\"readableMessage\":\"SecurityCompromis...",
+    "tavily_sample": "..."
+  }
+]

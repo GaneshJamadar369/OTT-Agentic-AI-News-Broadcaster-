@@ -7,15 +7,21 @@ import time
 from typing import Any
 
 
+_GLOBAL_KEY_STATE = {"idx": 0}
+
+
 def _is_rate_limit_error(exc: BaseException) -> bool:
     code = getattr(exc, "status_code", None)
     if code == 429:
         return True
+    # We also rotate on 401 if multiple keys are provided, handled inside the main loop
+    if code == 401:
+        return True
     name = type(exc).__name__.lower()
-    if "ratelimit" in name or "rate_limit" in name:
+    if "ratelimit" in name or "rate_limit" in name or "auth" in name:
         return True
     s = str(exc).lower()
-    return "429" in s or "rate limit" in s or "too many requests" in s
+    return "429" in s or "rate limit" in s or "too many requests" in s or "401" in s or "invalid api key" in s
 
 
 class _OpenAICompatResponse:
@@ -81,33 +87,70 @@ def _gemini_fallback_create(**kwargs: Any) -> Any:
 def groq_chat_create(client: Any, *, max_attempts: int | None = None, **kwargs: Any):
     """
     Wrap client.chat.completions.create with retries on 429 (TPM / rate limit).
-    If all attempts fail and GEMINI_API_KEY is set, one Gemini call is attempted.
+    Supports multiple keys via GROQ_API_KEY env var (comma-separated).
+    If a key hits 429, it switches to the next one.
+    If all attempts/keys fail and GEMINI_API_KEY is set, one Gemini call is attempted.
     """
-    attempts = max_attempts
-    if attempts is None:
-        attempts = int(os.getenv("GROQ_CHAT_MAX_ATTEMPTS", "15"))
+    # 1. Gather all available Groq keys
+    keys_str = os.getenv("GROQ_API_KEY", "").strip()
+    if keys_str:
+        keys = [k.strip() for k in keys_str.split(",") if k.strip()]
+    else:
+        # Fallback to single GROQ_API_KEY if present
+        k1 = os.getenv("GROQ_API_KEY", "").strip()
+        keys = [k1] if k1 else []
+
+    # 2. Prepare clients
+    from groq import Groq
+    
+    unique_keys = []
+    seen = set()
+    for k in keys:
+        if k not in seen:
+            unique_keys.append(k)
+            seen.add(k)
+    
+    all_clients = [Groq(api_key=k) for k in unique_keys]
+    if not all_clients:
+        all_clients = [client]
+    
+    total_keys = len(all_clients)
+    attempts = max_attempts or int(os.getenv("GROQ_CHAT_MAX_ATTEMPTS", "15"))
     last: BaseException | None = None
     fallback_ok = os.getenv("GROQ_GEMINI_FALLBACK", "true").lower() in ("1", "true", "yes")
 
     for i in range(attempts):
+        idx = (_GLOBAL_KEY_STATE["idx"] + i) % total_keys
+        curr = all_clients[idx]
         try:
-            return client.chat.completions.create(**kwargs)
+            res = curr.chat.completions.create(**kwargs)
+            _GLOBAL_KEY_STATE["idx"] = idx
+            return res
         except BaseException as e:
             last = e
             if not _is_rate_limit_error(e):
                 raise
+            
             err = str(e)
-            m = re.search(r"try again in ([0-9.]+)\s*ms", err, re.I)
-            if m:
-                delay = float(m.group(1)) / 1000.0 + 0.35
-            else:
-                delay = min(1.5**i, 120.0)
-            delay = max(delay, 0.5)
-            print(
-                f"[Groq] Rate limit (429); sleeping {delay:.2f}s then retry "
-                f"{i + 1}/{attempts}…"
-            )
-            time.sleep(delay)
+            from groq import AuthenticationError
+            is_401 = isinstance(e, AuthenticationError) or getattr(e, "status_code", None) == 401
+            
+            if is_401:
+                if total_keys > 1:
+                    _GLOBAL_KEY_STATE["idx"] = (idx + 1) % total_keys
+                    print(
+                        f"[Groq] Key {idx + 1} failed (401 unauthorized). "
+                        "Remove or replace this key in GROQ_API_KEY. Trying next key..."
+                    )
+                    continue
+                print("[Groq] Single API key failed (401). Check GROQ_API_KEY is valid.")
+                raise
+            
+            if (i + 1) % total_keys == 0:
+                m = re.search(r"try again in ([0-9.]+)\s*ms", err, re.I)
+                delay = float(m.group(1))/1000.0 + 0.35 if m else min(1.5**(i//total_keys), 60.0)
+                print(f"[Groq] Rate limited. Sleeping {delay:.2f}s...")
+                time.sleep(max(delay, 0.5))
 
     if fallback_ok and os.getenv("GEMINI_API_KEY", "").strip():
         try:

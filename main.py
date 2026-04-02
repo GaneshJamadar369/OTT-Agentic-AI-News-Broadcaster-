@@ -8,6 +8,7 @@ from journalist import journalist_agent
 from editor import editor_agent
 from visualizer import visualizer_agent
 from tagger import tagger_agent
+from metadata_agent import metadata_agent
 from evaluation.load_rubric import load_policy, load_rubric
 from evaluation.pipeline import evaluate_journalist_step, evaluate_package_step, validate_parallel_step
 from errors import BroadcastRejectedError
@@ -77,6 +78,9 @@ def route_after_package(state: AgentState):
     max_v = int(policy.get("agent_max_retries", {}).get("visualizer", 2))
     er = int(state.get("editor_runs") or 0)
     pr = int(state.get("packaging_runs") or 0)
+    if hint == "abort":
+        print("[route] evaluate_package -> reject_package (FATAL SYSTEM FAILURE)")
+        return "reject_package"
     if hint == "retry_editor" and er < 1 + max_e:
         print(f"[route] evaluate_package -> retry_editor (editor_runs={er}, max={max_e})")
         return "retry_editor"
@@ -86,7 +90,7 @@ def route_after_package(state: AgentState):
             f"(packaging_runs={pr}, max={max_v})"
         )
         return "retry_visuals"
-    print("[route] evaluate_package -> reject_package (retry budgets exhausted)")
+    print("[route] evaluate_package -> reject_package (retry budgets exhausted or invalid hint)")
     return "reject_package"
 
 
@@ -105,6 +109,9 @@ def validate_parallel_node(state: AgentState):
 def evaluate_package_node(state: AgentState):
     return evaluate_package_step(dict(state))
 
+
+def parallel_fork(state: AgentState):
+    return {}
 
 def final_assembler(state: AgentState):
     segments = state.get("segments") or []
@@ -155,7 +162,9 @@ workflow = StateGraph(AgentState)
 
 workflow.add_node("journalist", journalist_agent)
 workflow.add_node("evaluate_journalist", evaluate_journalist_node)
+workflow.add_node("parallel_fork", parallel_fork)
 workflow.add_node("editor", editor_agent)
+workflow.add_node("metadata_agent", metadata_agent)
 workflow.add_node("visual_packaging_fork", visual_packaging_fork)
 workflow.add_node("visualizer", visualizer_agent)
 workflow.add_node("tagger", tagger_agent)
@@ -177,14 +186,17 @@ workflow.add_conditional_edges(
 workflow.add_conditional_edges(
     "evaluate_journalist",
     route_after_journalist_eval,
-    {"continue": "editor", "retry": "journalist", "abort": "reject_journalist"},
+    {"continue": "parallel_fork", "retry": "journalist", "abort": "reject_journalist"},
 )
 
-workflow.add_edge("editor", "visual_packaging_fork")
-workflow.add_edge("visual_packaging_fork", "visualizer")
-workflow.add_edge("visual_packaging_fork", "tagger")
+workflow.add_edge("parallel_fork", "editor")
+workflow.add_edge("parallel_fork", "metadata_agent")
 
-workflow.add_edge("visualizer", "validate_parallel")
+workflow.add_edge("editor", "visual_packaging_fork")
+workflow.add_edge("metadata_agent", "visual_packaging_fork")
+
+workflow.add_edge("visual_packaging_fork", "visualizer")
+workflow.add_edge("visualizer", "tagger")
 workflow.add_edge("tagger", "validate_parallel")
 
 workflow.add_conditional_edges(
@@ -261,6 +273,8 @@ def run_industry_pipeline(url: str):
         "rubric_version": final_state.get("rubric_version"),
         "policy_version": final_state.get("policy_version"),
         "review_scores": final_state.get("review_scores"),
+        "video_category": final_state.get("video_category"),
+        "seo_tags": final_state.get("seo_tags"),
     }
 
     with open("final_broadcast_plan.json", "w", encoding="utf-8") as f:
@@ -284,6 +298,7 @@ def print_human_screenplay(state: dict):
     review = state.get("review_scores") or {}
     print("\n" + "=" * 80)
     print(f"PRODUCTION SCREENPLAY: {state.get('article_title', 'News Update')}")
+    print(f"CATEGORY: {state.get('video_category', 'N/A')} | TAGS: {', '.join(state.get('seo_tags', []))}")
     print("=" * 80)
     for seg in state.get("segments") or []:
         sid = seg.get("segment_id", "?")

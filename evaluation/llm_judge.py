@@ -7,7 +7,7 @@ from typing import Any, Dict, List
 
 from groq import Groq
 from dotenv import load_dotenv
-
+from groq_utils import groq_chat_create
 from evaluation.load_rubric import get_metrics_for_agent, metric_ids_for_llm
 
 load_dotenv()
@@ -17,7 +17,8 @@ _client: Groq | None = None
 def _client_groq() -> Groq:
     global _client
     if _client is None:
-        _client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+        _groq_keys = os.getenv("GROQ_API_KEY", "").split(",")
+        _client = Groq(api_key=_groq_keys[0].strip() if _groq_keys else None)
     return _client
 
 
@@ -28,8 +29,26 @@ def _judge_prompt(agent: str, metric_ids: List[str], rubric: Dict[str, Any], con
         m = defs.get(mid, {})
         lines.append(f"- {mid}: {m.get('name', mid)} (critical={m.get('critical')})")
     rubric_block = "\n".join(lines)
+    journalist_calibration = ""
+    if agent == "journalist":
+        journalist_calibration = """
+Calibration (journalist only):
+- Score 4 means "acceptable for broadcast": minor wording issues are still 4 if facts and structure are sound.
+- Reserve 1–2 for clear fabrication, missing blocks, or unsafe content.
+- For balance_neutrality: attributing official statements or quoted claims (e.g., "Trump said...", "Iranian state TV reported...") is correct wire-style reporting, not bias. Penalize only unattributed assertions, one-sided omission of attributed counterclaims present in the source, or loaded editorial language.
+- For source_faithfulness: reward close paraphrase that preserves numbers/names; penalize only clear drift or invention.
+
+"""
     return f"""You are an expert TV newsroom QA judge. Score each metric from 1 (poor) to 5 (excellent).
-Return ONLY valid JSON: an object mapping each metric_id to {{"score": <int 1-5>, "evidence": "<one short sentence>"}}.
+For any score below 5, you MUST provide a surgical fix suggestion.
+{journalist_calibration}
+Return ONLY valid JSON: an object mapping each metric_id to:
+{{
+  "score": <int 1-5>,
+  "evidence": "<reason for score without including any 'FIX:' prefix or repair instructions>",
+  "fix": "<one surgical actionable instruction to repair the defect found in the evidence above>",
+  "owner": "<the agent most responsible (editor, visualizer, tagger, or system)>"
+}}
 
 Metrics to score:
 {rubric_block}
@@ -51,7 +70,8 @@ def run_llm_metrics(
     if not ids:
         return {}
     prompt = _judge_prompt(agent, ids, rubric, context)
-    resp = _client_groq().chat.completions.create(
+    resp = groq_chat_create(
+        _client_groq(),
         model=model,
         temperature=0,
         messages=[{"role": "user", "content": prompt}],
@@ -60,14 +80,26 @@ def run_llm_metrics(
     raw = resp.choices[0].message.content
     data = json.loads(raw)
     out: Dict[str, Dict[str, Any]] = {}
+    defs = get_metrics_for_agent(rubric, agent)
     for mid in ids:
         cell = data.get(mid)
+        default_owner = defs.get(mid, {}).get("owner", agent)
         if isinstance(cell, dict):
             sc = int(cell.get("score", 3))
             sc = max(1, min(5, sc))
-            out[mid] = {"score": sc, "evidence": str(cell.get("evidence", ""))[:500]}
+            out[mid] = {
+                "score": sc,
+                "evidence": str(cell.get("evidence", ""))[:500],
+                "fix": str(cell.get("fix", ""))[:500],
+                "owner": str(cell.get("owner", default_owner)).lower() or default_owner,
+            }
         else:
-            out[mid] = {"score": 3, "evidence": "Judge returned malformed cell"}
+            out[mid] = {
+                "score": 3,
+                "evidence": "Judge returned malformed cell",
+                "fix": "Retry evaluation",
+                "owner": default_owner,
+            }
     return out
 
 

@@ -8,10 +8,5 @@ curl_cffi
 langfuse
 playwright-stealth
 python-dotenv
-<<<<<<< Current (Your changes)
 pyyaml
 google-generativeai
-=======
-google-generativeai
-pyyaml
->>>>>>> Incoming (Background Agent changes)

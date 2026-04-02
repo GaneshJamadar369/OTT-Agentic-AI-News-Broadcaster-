@@ -5,7 +5,8 @@ from state import AgentState
 from groq_utils import groq_chat_create
 
 load_dotenv()
-client = Groq(api_key=os.getenv("GROQ_API_KEY"))
+_groq_keys = os.getenv("GROQ_API_KEY", "").split(",")
+client = Groq(api_key=_groq_keys[0].strip() if _groq_keys else None)
 
 
 def editor_agent(state: AgentState):
@@ -35,12 +36,8 @@ Constraints:
 - Temperature: write for live anchor read-aloud.
 """
 
-<<<<<<< Current (Your changes)
     response = groq_chat_create(
         client,
-=======
-    response = client.chat.completions.create(
->>>>>>> Incoming (Background Agent changes)
         model="llama-3.3-70b-versatile",
         temperature=0.3,
         messages=[{"role": "user", "content": prompt}],

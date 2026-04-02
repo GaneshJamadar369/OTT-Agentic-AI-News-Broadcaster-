@@ -5,12 +5,11 @@ from typing import Any, Dict, List, Tuple
 
 from evaluation.aggregate import (
     agent_passes,
-    build_feedback_block,
+    build_surgical_feedback_for_agent,
     cross_passes,
-    decide_package_retry_route,
-    feedback_for_parallel_fail,
     merge_agent_feedback,
     merge_metric_scores,
+    route_by_blocking_metrics,
     weighted_average,
 )
 from evaluation.deterministic_checks import (
@@ -45,14 +44,18 @@ def evaluate_journalist_step(state: Dict[str, Any]) -> Dict[str, Any]:
     det = check_journalist_deterministic(state)
     llm = run_llm_metrics(agent, rubric, build_journalist_context(state))
     merged = merge_metric_scores(r_ag, det, llm)
-    ok, blocking = agent_passes(merged, r_ag, policy, agent_name="journalist")
+    ok, blocking_reports = agent_passes(merged, r_ag, policy, agent_name="journalist")
     wa = weighted_average(merged, r_ag)
-    fb = build_feedback_block(agent, merged, r_ag, ok, blocking_ids=blocking)
+    
+    # Surgical feedback for journalist
+    fb = build_surgical_feedback_for_agent(agent, blocking_reports)
+    
     payload = {
         "agent": agent,
         "pass": ok,
         "weighted_average": wa,
-        "blocking": blocking,
+        "blocking": [f["id"] for f in blocking_reports],
+        "blocking_reports": blocking_reports,
         "merged_scores": merged,
     }
     trace = append_trace(state.get("evaluation_trace"), "evaluate_journalist", {"weighted_averages": {agent: wa}, "pass": ok})
@@ -67,7 +70,7 @@ def evaluate_journalist_step(state: Dict[str, Any]) -> Dict[str, Any]:
             "status": "PASS" if ok else "FAIL",
             "overall_average": wa,
             "agent": agent,
-            "blocking_metrics": blocking,
+            "blocking_metrics": [f["id"] for f in blocking_reports],
         },
     }
     if fb:
@@ -78,6 +81,7 @@ def evaluate_journalist_step(state: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def validate_parallel_step(state: Dict[str, Any]) -> Dict[str, Any]:
+    # This remains mostly deterministic but feeds into surgical feedback later
     segs = state.get("segments") or []
     tags = state.get("segment_tags") or []
     errors: List[str] = []
@@ -93,21 +97,15 @@ def validate_parallel_step(state: Dict[str, Any]) -> Dict[str, Any]:
     vd_max = policy.get("video_duration_max", 120)
     if isinstance(vd, int) and not (vd_min <= vd <= vd_max):
         errors.append(f"video_duration_sec {vd} not in [{vd_min},{vd_max}]")
-    vdet = check_visualizer_deterministic(state, len(tags))
-    if int(vdet.get("json_schema_validity", {}).get("score", 0)) < 4:
-        errors.append("visualizer JSON/schema: " + str(vdet.get("json_schema_validity", {}).get("evidence")))
-    if int(vdet.get("cross_check_tagger_count", {}).get("score", 0)) < 4:
-        errors.append(str(vdet.get("cross_check_tagger_count", {}).get("evidence")))
-    tdet = check_tagger_deterministic(state, len(segs))
-    if int(tdet.get("json_schema_validity", {}).get("score", 0)) < 4:
-        errors.append("tagger JSON: " + str(tdet.get("json_schema_validity", {}).get("evidence")))
+    
     ok = len(errors) == 0
     out: Dict[str, Any] = {
         "parallel_validation_ok": ok,
         "parallel_validation_errors": errors,
     }
     if not ok:
-        fb = feedback_for_parallel_fail(errors)
+        # Deterministic errors distributed to both
+        fb = "FEEDBACK (deterministic sync):\n" + "\n".join(f"- {e}" for e in errors)
         lf = dict(state.get("last_feedback_by_agent") or {})
         lf["visualizer"] = merge_agent_feedback(lf.get("visualizer", ""), fb)
         lf["tagger"] = merge_agent_feedback(lf.get("tagger", ""), fb)
@@ -121,64 +119,64 @@ def evaluate_package_step(state: Dict[str, Any]) -> Dict[str, Any]:
     rv, pv = _versions(rubric, policy)
     agents = ["editor", "visualizer", "tagger"]
     results: Dict[str, Any] = {}
-    merged_all: Dict[str, Dict[str, Any]] = {}
     was: Dict[str, float] = {}
+    all_failures: List[Dict[str, Any]] = []
 
+    # 1. Editor
     det_ed = check_editor_deterministic(state)
     llm_ed = run_llm_metrics("editor", rubric, build_editor_context(state))
     r_ed = get_metrics_for_agent(rubric, "editor")
     m_ed = merge_metric_scores(r_ed, det_ed, llm_ed)
     ok_ed, bl_ed = agent_passes(m_ed, r_ed, policy, agent_name="editor")
-    results["editor"] = {"pass": ok_ed, "merged": m_ed, "blocking": bl_ed, "wa": weighted_average(m_ed, r_ed)}
-    merged_all["editor"] = m_ed
+    results["editor"] = {"pass": ok_ed, "merged": m_ed, "blocking": [f["id"] for f in bl_ed], "wa": weighted_average(m_ed, r_ed)}
     was["editor"] = results["editor"]["wa"]
+    all_failures.extend(bl_ed)
 
+    # 2. Visualizer
     det_v = check_visualizer_deterministic(state, len(state.get("segment_tags") or []))
     llm_v = run_llm_metrics("visualizer", rubric, build_visualizer_context(state))
     r_v = get_metrics_for_agent(rubric, "visualizer")
     m_v = merge_metric_scores(r_v, det_v, llm_v)
     ok_v, bl_v = agent_passes(m_v, r_v, policy, agent_name="visualizer")
-    results["visualizer"] = {"pass": ok_v, "merged": m_v, "blocking": bl_v, "wa": weighted_average(m_v, r_v)}
-    merged_all["visualizer"] = m_v
+    results["visualizer"] = {"pass": ok_v, "merged": m_v, "blocking": [f["id"] for f in bl_v], "wa": weighted_average(m_v, r_v)}
     was["visualizer"] = results["visualizer"]["wa"]
+    all_failures.extend(bl_v)
 
+    # 3. Tagger
     det_t = check_tagger_deterministic(state, len(state.get("segments") or []))
     llm_t = run_llm_metrics("tagger", rubric, build_tagger_context(state))
     r_t = get_metrics_for_agent(rubric, "tagger")
     m_t = merge_metric_scores(r_t, det_t, llm_t)
     ok_t, bl_t = agent_passes(m_t, r_t, policy, agent_name="tagger")
-    results["tagger"] = {"pass": ok_t, "merged": m_t, "blocking": bl_t, "wa": weighted_average(m_t, r_t)}
-    merged_all["tagger"] = m_t
+    results["tagger"] = {"pass": ok_t, "merged": m_t, "blocking": [f["id"] for f in bl_t], "wa": weighted_average(m_t, r_t)}
     was["tagger"] = results["tagger"]["wa"]
+    all_failures.extend(bl_t)
 
+    # 4. Cross-Package
     st_cross = {**state, "rubric_version": rv, "policy_version": pv}
     det_x = check_cross_package_code(st_cross)
     llm_x = run_llm_metrics("cross_package", rubric, build_cross_context(state))
     r_x = get_metrics_for_agent(rubric, "cross_package")
     m_x = merge_metric_scores(r_x, det_x, llm_x)
     ok_x, bl_x = cross_passes(m_x, r_x, policy)
-    results["cross_package"] = {"pass": ok_x, "merged": m_x, "blocking": bl_x, "wa": weighted_average(m_x, r_x)}
+    results["cross_package"] = {"pass": ok_x, "merged": m_x, "blocking": [f["id"] for f in bl_x], "wa": weighted_average(m_x, r_x)}
     was["cross_package"] = results["cross_package"]["wa"]
+    all_failures.extend(bl_x)
 
-    package_ok = ok_ed and ok_v and ok_t and ok_x
-    route = decide_package_retry_route(ok_ed, ok_v, ok_t, ok_x)
+    # Coarse booleans for legacy flow if needed, but routing is now surgical
+    package_ok = (len(all_failures) == 0)
+    route = route_by_blocking_metrics(all_failures)
 
-    fb_e = build_feedback_block("editor", m_ed, r_ed, ok_ed, blocking_ids=bl_ed)
-    fb_v = build_feedback_block("visualizer", m_v, r_v, ok_v, blocking_ids=bl_v)
-    fb_t = build_feedback_block("tagger", m_t, r_t, ok_t, blocking_ids=bl_t)
-    fb_x = build_feedback_block("cross_package", m_x, r_x, ok_x, blocking_ids=bl_x)
+    # Distribute surgical feedback packets
     lf = dict(state.get("last_feedback_by_agent") or {})
-    if fb_e:
-        lf["editor"] = merge_agent_feedback(lf.get("editor", ""), fb_e)
-    if fb_v:
-        lf["visualizer"] = merge_agent_feedback(lf.get("visualizer", ""), fb_v)
-    if fb_t:
-        lf["tagger"] = merge_agent_feedback(lf.get("tagger", ""), fb_t)
-    if fb_x:
-        lf["editor"] = merge_agent_feedback(lf.get("editor", ""), fb_x)
-        lf["visualizer"] = merge_agent_feedback(lf.get("visualizer", ""), fb_x)
+    for a in ["editor", "visualizer", "tagger"]:
+        surgical_fb = build_surgical_feedback_for_agent(a, all_failures)
+        if surgical_fb:
+            lf[a] = merge_agent_feedback(lf.get(a, ""), surgical_fb)
 
-    overall = sum(was[a] for a in ["editor", "visualizer", "tagger"]) / 3.0
+    # Visible average includes cross-package (Truthful Analytics)
+    overall = sum(was.values()) / len(was)
+    
     trace = append_trace(
         state.get("evaluation_trace"),
         "evaluate_package",
@@ -187,6 +185,7 @@ def evaluate_package_step(state: Dict[str, Any]) -> Dict[str, Any]:
 
     er = dict(state.get("evaluation_results") or {})
     er["package"] = results
+    
     out: Dict[str, Any] = {
         "evaluation_results": er,
         "evaluation_trace": trace,
@@ -199,9 +198,16 @@ def evaluate_package_step(state: Dict[str, Any]) -> Dict[str, Any]:
             "overall_average": overall,
             "by_agent": was,
             "cross_package_average": was.get("cross_package"),
+            "all_blocking": [f["id"] for f in all_failures],
         },
         "last_feedback_by_agent": lf,
     }
+    
     if not package_ok:
-        out["iterations"] = 1
+        # Prevent runaway loops if system issues detected
+        if route == "abort":
+            out["iterations"] = 99  # Signal LangGraph to stop
+        else:
+            out["iterations"] = 1
+            
     return out
